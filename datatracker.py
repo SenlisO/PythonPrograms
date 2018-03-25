@@ -101,11 +101,11 @@ def create_browser_instance(headless):
     if (headless_flag):
         browser_options.add_argument('-headless')
 
-        # create browser object
-        browser = webdriver.Firefox(firefox_options=browser_options)
+    # create browser object
+    browser = webdriver.Firefox(firefox_options=browser_options)
 
-        # set default wait times
-        wait = WebDriverWait(browser, timeout=10)
+    # set default wait times
+    wait = WebDriverWait(browser, timeout=10)
 
     return (browser, wait)
 
