@@ -93,7 +93,7 @@ def login_to_ATT(browser, wait):
     print("login complete")
 
 
-def create_browser_instance(headless):
+def create_browser_instance(headless_flag):
     # set up the firefox webdriver
     browser_options = Options()
 
