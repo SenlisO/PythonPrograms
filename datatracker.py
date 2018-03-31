@@ -5,6 +5,9 @@ Requires selenium to be installed
 to install selenium, run "pip3 install selenium"
 You will also need geckodriver.  Get it here:
 https://github.com/mozilla/geckodriver/releases
+
+Of course, you can't really use this script since the
+passwords have been redacted.
 '''
 
 from selenium import webdriver
@@ -15,28 +18,39 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 
 
-def login_to_GCI(browser, wait):
+def wait_for_page_load(browser, wait, GCI):
     '''
-    Function logs into GCI
+    Function waits for page to load and takes necessary action if it fails
     Parameters:
         browser: handle on Firefox browser instance
         wait: object used to have browser handle wait on HTML elements to appear
+        GCI: boolean value.  If true, logging into GCI.  If False, logging into AT&T
     '''
     page_loaded = False  # keeps us trying to log in until we find username/password field
     count = 3  # eventually allows us to stop trying if we are still not successful
 
     while not page_loaded:
-        # navigate to GCI login page
-        print("logging in to GCI")
-        browser.get('https://login.gci.com/#quick-link')
+        if GCI:  # trying to log ingo GCI
+            # navigate to GCI login page
+            print("logging in to GCI")
+            browser.get('https://login.gci.com/#quick-link')
+        else:  # trying to log into AT&T
+            # navigate to AT&T
+            print("logging into AT&T")
+            browser.get('https://www.att.com/my/#/login')
 
         try:
             # wait until we see the username and password fields to appear
-            wait.until(expected.visibility_of_element_located((By.ID, 'username')))
-            wait.until(expected.visibility_of_element_located((By.ID, 'password')))
+            if GCI:  # GCI
+                wait.until(expected.visibility_of_element_located((By.ID, 'username')))
+                wait.until(expected.visibility_of_element_located((By.ID, 'password')))
+            else:  # AT&T
+                wait.until(expected.visibility_of_element_located((By.ID, 'userName')))
+                wait.until(expected.visibility_of_element_located((By.ID, 'password')))
+
             page_loaded = True  # if both previous elements are found, exit while loop
         except TimeoutException:  # for some reason, we didn't find the username/password fields
-            print("GCI login timeout exception.  Count=" + str(count)) 
+            print("Login timeout exception.  Count=" + str(count))
             if count > 1:  # if we haven't tried more than twice
                 count -= 1  # just try again
             elif count > 0:  # if we have tried twice, restart in headless mode
@@ -50,6 +64,17 @@ def login_to_GCI(browser, wait):
                 print("Timeout occurred without finding necessary data")
                 input("Please fix error and press enter to continue")
                 print("Re-navigating to login screen.  Apply necessary changes to script")
+
+
+def login_to_GCI(browser, wait):
+    '''
+    Function logs into GCI
+    Parameters:
+        browser: handle on Firefox browser instance
+        wait: object used to have browser handle wait on HTML elements to appear
+    '''
+
+    wait_for_page_load(browser, wait, True)  # waiting for elements to load
 
     # enter username and password and then press login button
     user_elem = browser.find_element_by_id('username')
@@ -69,17 +94,7 @@ def login_to_ATT(browser, wait):
         browser: handle on Firefox browser instance
         wait: object used to have browser handle wait on HTML elements to appear
     '''
-    page_loaded = False  # keeps us trying to log in until we find username/password field
-    count = 3  # eventually allows us to stop trying if we are still not successful
-    
-    # navigate to AT&T
-    print("logging into AT&T")
-    browser.get('https://www.att.com/my/#/login')
-
-    # todo: harden
-    # wait until we see the username and password fields to appear
-    wait.until(expected.visibility_of_element_located((By.ID, 'userName')))
-    wait.until(expected.visibility_of_element_located((By.ID, 'password')))
+    wait_for_page_load(browser, wait, False)  # wait for page elements to load
 
     # enter username and password and then press login button
     user_elem = browser.find_element_by_id('userName')
@@ -110,6 +125,7 @@ def create_browser_instance(headless_flag):
     return (browser, wait)
 
 
+# **************************** setup section **************************
 # flags
 headless_flag = True  # headless means no visible browser window
 data_gathered = False  # when we get the data from the page we need, this flag allows us to continue
@@ -119,13 +135,14 @@ count = 3  # used to monitor how many times we try to navigate to a page
 
 browser, wait = create_browser_instance(headless_flag)  # create a browser
 
+# **************************** GCI section **************************
 login_to_GCI(browser, wait)  # function will log in for us
 
 # navigate to data usage screen
 # tries twice in headless mode, and then restarts browser in normal mode
 # to give user the chance to correct whatever is preventing the browser
 # from navigating (some pop-up window most likely)
-while not data_gathered:
+while not data_gathered:  # todo: fold into above function
     # now, go to usage screen
     print("navigating to GCI data usage screen")
     browser.get('https://apps.gci.com/um/overview#quick-link')
@@ -175,6 +192,7 @@ GCI_percentage_into_period = int((GCI_days_into_period / 30) * 100)  # assumed a
 print("GCI data collected")
 print("-----------------------------------------------")
 
+# **************************** AT&T section **************************
 login_to_ATT(browser, wait)
 
 # prepare some variables for data scraping loop
@@ -182,7 +200,7 @@ data_gathered = False
 count = 3
 
 # identify web elements
-try:
+try:  # fold into above function
     wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, '.cboDaysLeft')))
     wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, 'div.usage-bar:nth-child(3) > div:nth-child(1) > span:nth-child(1)')))
 
@@ -208,6 +226,7 @@ ATT_days_into_period = 30 - int(split_string[0])
 if ATT_days_into_period < 0:  # just in case billing period is 31 days long
     ATT_days_into_period      # we will just round up
 
+# **************************** calculation section **************************
 # perform calculations on data usage
 ATT_percentage_used = int((ATT_data_usage / ATT_total_data) * 100)
 ATT_percentage_into_period = int((ATT_days_into_period / 30) * 100)  # assumed all billing periods are 30 days long
