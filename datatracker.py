@@ -19,6 +19,7 @@ from selenium.common.exceptions import TimeoutException
 
 GCI_password = "redacted"
 ATT_password = "redacted"
+headless_flag = True
 
 
 def wait_for_login_page(browser, wait, GCI):
@@ -221,7 +222,6 @@ def resolve_stuck_on_login_page(browser, wait, GCI):
 
 # **************************** setup section **************************
 # flags
-headless_flag = False  # headless means no visible browser window
 data_gathered = False  # when we get the data from the page we need, this flag allows us to continue
 
 # variable
