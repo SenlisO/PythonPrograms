@@ -19,7 +19,7 @@ from selenium.common.exceptions import TimeoutException
 
 GCI_password = "redacted"
 ATT_password = "redacted"
-headless_flag = True
+headless_flag = True  # headless means browser is not visible
 
 
 def wait_for_login_page(browser, wait, GCI):
