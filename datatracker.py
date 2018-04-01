@@ -17,8 +17,11 @@ from selenium.webdriver.support import expected_conditions as expected
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 
+GCI_password = "redacted"
+ATT_password = "redacted"
 
-def wait_for_page_load(browser, wait, GCI):
+
+def wait_for_login_page(browser, wait, GCI):
     '''
     Function waits for page to load and takes necessary action if it fails
     Parameters:
@@ -66,6 +69,63 @@ def wait_for_page_load(browser, wait, GCI):
                 print("Re-navigating to login screen.  Apply necessary changes to script")
 
 
+def wait_for_data_page(browser, wait, GCI):
+    '''
+    Function waits for data page to load and takes necessary action if it fails
+    Parameters:
+        browser: handle on Firefox browser instance
+        wait: object used to have browser handle wait on HTML elements to appear
+        GCI: boolean value.  If true, logging into GCI.  If False, logging into AT&T
+    '''
+    page_loaded = False  # keeps us trying to log in until we find username/password field
+    count = 3  # eventually allows us to stop trying if we are still not successful
+
+    while not page_loaded:
+        if GCI:  # trying to log ingo GCI
+            # navigate to GCI data page
+            print("Navigating to GCI data usage screen")
+            browser.get('https://apps.gci.com/um/overview#quick-link')
+        else:  # trying to log into AT&T
+            # navigate to AT&T
+            if count < 3:  # only need to do this the second and third times
+                browser.get('https://www.att.com/my/#/accountOverview')
+            print("Logged into AT&T, waiting for data elements")
+
+        try:
+            # wait until we see the username and password fields to appear
+            if GCI:  # GCI
+                wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'total')))
+                wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'cap')))
+                wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'days')))
+            else:  # AT&T
+                wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, '.cboDaysLeft')))
+                wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, 'div.usage-bar:nth-child(3) > div:nth-child(1) > span:nth-child(1)')))
+
+            page_loaded = True  # if both previous elements are found, exit while loop
+        except TimeoutException:  # for some reason, we didn't find the username/password fields
+            print("Login timeout exception.  Count=" + str(count))
+            if count > 1:  # if we haven't tried more than twice
+                resolve_stuck_on_login_page(browser, wait, GCI)  # check if we are still on the login screen and attempt to resolve
+                count -= 1  # just try again
+            elif count > 0:  # if we have tried twice, restart in headless mode
+                count -= 1
+
+                # restart browser instance in non-headless mode
+                headless_flag = False
+                browser, wait = create_browser_instance(headless_flag)
+
+                # may need to log in again
+                if (GCI):
+                    login_to_GCI(browser, wait)
+                else:
+                    login_to_ATT(browser, wait)
+            else:  # we have tried 3 times, pause for user to fix issue
+                # display error message and wait for user input
+                print("Timeout occurred without finding necessary data")
+                input("Please fix error and press enter to continue")
+                print("Re-navigating to login screen.  Apply necessary changes to script")
+
+
 def login_to_GCI(browser, wait):
     '''
     Function logs into GCI
@@ -74,13 +134,13 @@ def login_to_GCI(browser, wait):
         wait: object used to have browser handle wait on HTML elements to appear
     '''
 
-    wait_for_page_load(browser, wait, True)  # waiting for elements to load
+    wait_for_login_page(browser, wait, True)  # waiting for elements to load
 
     # enter username and password and then press login button
     user_elem = browser.find_element_by_id('username')
     user_elem.send_keys("Senlis")
     pass_elem = browser.find_element_by_id('password')
-    pass_elem.send_keys("[REDACTED]")
+    pass_elem.send_keys(GCI_password)
     login_button = browser.find_element_by_id('login')
     login_button.click()
 
@@ -94,13 +154,13 @@ def login_to_ATT(browser, wait):
         browser: handle on Firefox browser instance
         wait: object used to have browser handle wait on HTML elements to appear
     '''
-    wait_for_page_load(browser, wait, False)  # wait for page elements to load
+    wait_for_login_page(browser, wait, False)  # wait for page elements to load
 
     # enter username and password and then press login button
     user_elem = browser.find_element_by_id('userName')
     user_elem.send_keys("gizmo.romick@gmail.com")
     pass_elem = browser.find_element_by_id('password')
-    pass_elem.send_keys("[REDACTED]")
+    pass_elem.send_keys(ATT_password)
     login_button = browser.find_element_by_id('loginButton')
     login_button.click()
     # after last command, selenium navigates to "https://m.att.com/my/#/accountOverview"
@@ -125,9 +185,43 @@ def create_browser_instance(headless_flag):
     return (browser, wait)
 
 
+def on_login_screen(browser, wait):
+    '''
+    function checks if browser is currently waiting on login screen
+    parameters
+       browser: handle on browser object
+       wait: handle on wait object
+    '''
+    GCI_login_URL = "https://login.gci.com/#quick-link"
+    ATT_login_URL = "https://www.att.com/my/#/login"
+    if browser.current_url == GCI_login_URL or browser.current_url == ATT_login_URL:
+        return True
+
+    return True
+
+
+def resolve_stuck_on_login_page(browser, wait, GCI):
+    '''
+    function checks if we are still on login page and attempts to resolve issue
+    parameters
+       browser: handle on browser object
+       wait: handle on wait object
+       GCI: if true, working on GCI data.  If false, AT&T
+    '''
+    if on_login_screen(browser, wait):  # we had a problem that prevented the browser from going to the next screen
+        print("Error, browser did not proceed to next page after login")
+        browser, wait = create_browser_instance(False) # recreate browser instance in non-headless
+        if GCI:
+            login_to_GCI(browser, wait)
+        else:
+            login_to_ATT(browser, wait)
+
+        input("Browser restared in headless mode.  Press enter when problem is resolved")
+
+
 # **************************** setup section **************************
 # flags
-headless_flag = True  # headless means no visible browser window
+headless_flag = False  # headless means no visible browser window
 data_gathered = False  # when we get the data from the page we need, this flag allows us to continue
 
 # variable
@@ -138,44 +232,14 @@ browser, wait = create_browser_instance(headless_flag)  # create a browser
 # **************************** GCI section **************************
 login_to_GCI(browser, wait)  # function will log in for us
 
-# navigate to data usage screen
-# tries twice in headless mode, and then restarts browser in normal mode
-# to give user the chance to correct whatever is preventing the browser
-# from navigating (some pop-up window most likely)
-while not data_gathered:  # todo: fold into above function
-    # now, go to usage screen
-    print("navigating to GCI data usage screen")
-    browser.get('https://apps.gci.com/um/overview#quick-link')
+print("collecting data")
 
-    # get handles on data usage data elements
-    try:  # wait until we see the necessary data elements or pause for troubleshooting
-        wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'total')))
-        wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'cap')))
-        wait.until(expected.visibility_of_element_located((By.CLASS_NAME, 'days')))
-        print("collecting data")
+wait_for_data_page(browser, wait, True)  # function will wait for data elements to appear
 
-        # identify data elements
-        usage_elem = browser.find_element_by_class_name('total')
-        total_elem = browser.find_element_by_class_name('cap')
-        days_elem = browser.find_element_by_class_name('days')
-        data_gathered = True
-    except TimeoutException:  # for some reason we didn't find the data elements we were looking for
-        print("GCI data usage page timeout.  Count=" + str(count))  # display error to console
-        if count > 2:  # this decision allows us to try again for a total of two times
-            count -= 1  # decriment count once
-        elif count > 1:  # we have already tried twice
-            count -= 1  # decriment count once
-            # restart browser in non-headless mode so we can see what we are doing
-            headless_flag = False
-            browser, wait = create_browser_instance(headless_flag)
-
-            # we may need to log in again
-            login_to_GCI(browser, wait)
-        else:
-            # display error message
-            print("Timeout occurred without finding necessary data")
-            temp = input("Please fix error and press enter to continue")
-            print("Re-navigating to data usage screen.  Apply necessary changes to script")
+# identify data elements
+usage_elem = browser.find_element_by_class_name('total')
+total_elem = browser.find_element_by_class_name('cap')
+days_elem = browser.find_element_by_class_name('days')
 
 # collect data from elements
 GCI_data_usage = float(usage_elem.text)
@@ -195,27 +259,12 @@ print("-----------------------------------------------")
 # **************************** AT&T section **************************
 login_to_ATT(browser, wait)
 
-# prepare some variables for data scraping loop
-data_gathered = False
-count = 3
+print("collecting data")
 
-# identify web elements
-try:  # fold into above function
-    wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, '.cboDaysLeft')))
-    wait.until(expected.visibility_of_element_located((By.CSS_SELECTOR, 'div.usage-bar:nth-child(3) > div:nth-child(1) > span:nth-child(1)')))
+wait_for_data_page(browser, wait, False)
 
-    print("collecting data")
-    days_elem = browser.find_element_by_css_selector('.cboDaysLeft')
-    usage_elem = browser.find_element_by_css_selector('div.usage-bar:nth-child(3) > div:nth-child(1) > span:nth-child(1)')
-except TimeoutException:  # for some reason, we didn't find the data elements we were looking for
-    print("AT&T account details page timeount.  Count=" + str(count))  # display error to console
-    if count > 2:  # this decision allows us to try again for a total of two times
-        count -= 1
-        browser.get('https://m.att.com/my/#/accountOverview')  # try to manually navigate to account overview
-    elif count > 1:  # we have already tried twice, now restart browser in non-headless mode
-        pass
-    else:
-        pass
+days_elem = browser.find_element_by_css_selector('.cboDaysLeft')
+usage_elem = browser.find_element_by_css_selector('div.usage-bar:nth-child(3) > div:nth-child(1) > span:nth-child(1)')
 
 # collect data from elements
 split_string = str.split(usage_elem.text)  # default is to split string by spaces
